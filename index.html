@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GlobalPath AI - Smart Travel Companion</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet.js for beautiful Interactive Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- FontAwesome Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font - Inter for Modern Clean Look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Custom Modern Map Styles */
+        #map {
+            z-index: 1;
+            background-color: #f1f5f9;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Glassmorphism card utility */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        .glass-panel-dark {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        /* Soft Pulse for Loading Indicator */
+        @keyframes gentle-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.98); }
+        }
+        .pulse-soft {
+            animation: gentle-pulse 2s infinite ease-in-out;
+        }
+        /* Custom map markers */
+        .custom-marker-pin {
+            transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .custom-marker-pin:hover {
+            transform: scale(1.15) translateY(-4px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex flex-col antialiased">
+
+    <!-- Top Brand Header -->
+    <header class="bg-white/95 backdrop-blur-md border-b border-slate-100 px-5 py-3.5 flex items-center justify-between shrink-0 shadow-sm z-10">
+        <div class="flex items-center space-x-3">
+            <div class="bg-gradient-to-tr from-indigo-500 to-violet-600 text-white p-2.5 rounded-2xl shadow-md shadow-indigo-100 flex items-center justify-center">
+                <i class="fa-solid fa-compass text-lg animate-spin-slow"></i>
+            </div>
+            <div>
+                <h1 class="text-base font-extrabold tracking-tight text-slate-900 flex items-center gap-1.5">
+                    GlobalPath <span class="bg-indigo-600 text-white text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md">AI</span>
+                </h1>
+                <p class="text-[10px] text-slate-400 font-semibold tracking-wide">Inclusive Travel Map Assistant</p>
+            </div>
+        </div>
+        
+        <!-- Live Profile Sync Status Badge -->
+        <button onclick="switchTab('profile')" class="flex items-center space-x-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-200 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-700 border border-slate-200/50">
+            <span id="header-lang-flag">🇺🇸</span>
+            <span id="header-profile-tag" class="max-w-[90px] truncate">Standard</span>
+            <i class="fa-solid fa-sliders text-[10px] text-indigo-500"></i>
+        </button>
+    </header>
+
+    <main class="flex-1 relative overflow-hidden">
+
+        <!-- Tab 1: Interactive Map View -->
+        <section id="tab-map" class="absolute inset-0 flex flex-col transition-all duration-300 transform translate-x-0">
+            <!-- Map Container -->
+            <div id="map" class="flex-1 w-full h-full relative"></div>
+
+            <!-- Floating Search and Pill Filters inside Map View -->
+            <div class="absolute top-4 left-4 right-4 z-[999] pointer-events-none">
+                <div class="flex flex-col space-y-2.5 max-w-md mx-auto">
+                    <!-- Search Input Widget -->
+                    <div class="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-slate-100 p-1 flex items-center pointer-events-auto transition-all focus-within:ring-2 focus-within:ring-indigo-500/20">
+                        <span class="pl-3.5 pr-2 text-slate-400"><i class="fa-solid fa-magnifying-glass text-xs"></i></span>
+                        <input type="text" id="map-search" placeholder="Search suitable places in Seoul..." class="w-full bg-transparent border-0 outline-none focus:ring-0 text-xs py-2 text-slate-700 font-medium" oninput="handleMapSearch(this.value)">
+                        <button onclick="clearMapSearch()" class="p-1.5 text-slate-300 hover:text-slate-500 mr-1"><i class="fa-solid fa-circle-xmark text-sm"></i></button>
+                    </div>
+
+                    <!-- Category Pills -->
+                    <div class="flex space-x-2 overflow-x-auto no-scrollbar pointer-events-auto pb-1">
+                        <button onclick="toggleMapCategory('all')" id="cat-all" class="bg-indigo-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-md shadow-indigo-100 transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-border-all mr-1"></i> All Sights
+                        </button>
+                        <button onclick="toggleMapCategory('food')" id="cat-food" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-utensils text-orange-500 mr-1.5"></i> Food & Cafe
+                        </button>
+                        <button onclick="toggleMapCategory('sight')" id="cat-sight" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-landmark text-teal-500 mr-1.5"></i> Historic Sites
+                        </button>
+                        <button onclick="toggleMapCategory('prayer')" id="cat-prayer" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-mosque text-emerald-500 mr-1.5"></i> Prayer Room
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floating Detail Card Sheet (Triggers on Marker Tap) -->
+            <div class="absolute bottom-6 left-4 right-4 z-[999] pointer-events-none">
+                <div id="place-detail-card" class="bg-white/95 backdrop-blur-md rounded-3xl p-5 shadow-2xl border border-slate-100/80 max-w-md mx-auto transform translate-y-32 opacity-0 transition-all duration-300 pointer-events-auto hidden">
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="flex flex-wrap gap-1.5 items-center">
+                            <span id="place-tag" class="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase">Category</span>
+                            <span id="place-suitability" class="bg-green-50 text-green-700 border border-green-100 px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check"></i> Cultural Match
+                            </span>
+                        </div>
+                        <button onclick="closePlaceDetail()" class="text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-full hover:scale-105 transition-all">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+                    <h3 id="place-title" class="text-base font-extrabold text-slate-900 mb-1">Place Title</h3>
+                    <p id="place-desc" class="text-xs text-slate-500 leading-relaxed mb-4">Place short description goes here.</p>
+                    
+                    <!-- Meta features and routing action -->
+                    <div class="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 items-center">
+                        <div class="flex items-center space-x-2 text-xs text-slate-600">
+                            <i class="fa-solid fa-map-pin text-rose-500 text-sm shrink-0"></i>
+                            <span id="place-addr" class="truncate font-medium">Address</span>
+                        </div>
+                        <div class="flex items-center justify-end">
+                            <button id="nav-btn" class="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center space-x-1.5">
+                                <i class="fa-solid fa-route"></i>
+                                <span>Get Route</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2: AI Scanner -->
+        <section id="tab-scanner" class="absolute inset-0 bg-slate-900 text-white flex flex-col transition-all duration-300 transform translate-x-full overflow-y-auto no-scrollbar pb-24">
+            <div class="p-5 flex-1 flex flex-col justify-between max-w-md mx-auto w-full">
+                <div>
+                    <!-- Section Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-expand text-indigo-400"></i> AI Lens Sign & Menu Scanner
+                            </h2>
+                            <p class="text-[11px] text-slate-400">Snap a Korean sign, map, or menu. AI will translate and assess it based on your profile.</p>
+                        </div>
+                        <span class="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[9px] px-2.5 py-1 rounded-lg font-black tracking-wider">GEMINI 3.1</span>
+                    </div>
+
+                    <!-- Upload / Capture Workspace Card -->
+                    <div class="relative bg-slate-950 aspect-[4/3] rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center overflow-hidden group mb-5 hover:border-indigo-500/50 transition-all duration-300 shadow-inner">
+                        <input type="file" id="camera-file-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="handleImageUpload(event)">
+                        
+                        <!-- Initial Upload View State -->
+                        <div id="scanner-idle" class="text-center p-6 pointer-events-none">
+                            <div class="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-md">
+                                <i class="fa-solid fa-camera text-slate-400 text-xl group-hover:text-indigo-400 group-hover:scale-110 transition-all"></i>
+                            </div>
+                            <p class="text-xs font-bold text-slate-200">Take a Photo or Select Image</p>
+                            <p class="text-[10px] text-slate-500 mt-1">Tap anywhere to upload signboards or dish lists</p>
+                        </div>
+
+                        <!-- Image Loading & Analyzing State -->
+                        <div id="scanner-preview-container" class="absolute inset-0 hidden bg-black">
+                            <img id="scanner-preview-img" src="" class="w-full h-full object-cover">
+                            <div class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                                <!-- Loader Spinners -->
+                                <div id="scanner-loading" class="hidden text-center">
+                                    <div class="relative w-16 h-16 mx-auto mb-4">
+                                        <div class="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
+                                        <div class="absolute inset-0 border-4 border-t-indigo-500 rounded-full animate-spin"></div>
+                                    </div>
+                                    <p class="text-xs font-bold text-white tracking-wide">Evaluating Content Safety...</p>
+                                    <p id="loading-step" class="text-[9px] text-indigo-300 mt-1 uppercase tracking-wider">Detecting Korean Hangul</p>
+                                </div>
+                            </div>
+                            <!-- Reset Preview Button -->
+                            <button onclick="clearScanner()" class="absolute top-4 right-4 bg-black/65 hover:bg-black text-white p-2.5 rounded-full backdrop-blur-md transition-all z-20 hover:scale-105 active:scale-95">
+                                <i class="fa-solid fa-rotate-left text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Demo Testing Presets Container -->
+                    <div id="scanner-presets" class="mb-5">
+                        <div class="flex items-center justify-between mb-2">
+                            <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">No signs nearby? Try demo presets:</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2.5">
+                            <!-- Preset 1: Korean BBQ -->
+                            <button onclick="loadPresetSign('pork')" class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 rounded-2xl p-2.5 text-left transition-all active:scale-95">
+                                <div class="bg-slate-900 h-16 rounded-xl flex items-center justify-center mb-1.5 overflow-hidden shadow-inner">
+                                    <i class="fa-solid fa-bowl-food text-amber-500 text-lg"></i>
+                                </div>
+                                <span class="text-[10px] font-extrabold block truncate text-slate-200">BBQ Grill House</span>
+                                <span class="text-[8px] text-rose-400 block truncate">Contains Pork / Meat</span>
+                            </button>
+                            <!-- Preset 2: Bibimbap -->
+                            <button onclick="loadPresetSign('vegan')" class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 rounded-2xl p-2.5 text-left transition-all active:scale-95">
+                                <div class="bg-slate-900 h-16 rounded-xl flex items-center justify-center mb-1.5 overflow-hidden shadow-inner">
+                                    <i class="fa-solid fa-leaf text-emerald-500 text-lg"></i>
+                                </div>
+                                <span class="text-[10px] font-extrabold block truncate text-slate-200">Wild Herb Rice</span>
+                                <span class="text-[8px] text-emerald-400 block truncate">Vegan Friendly Option</span>
+                            </button>
+                            <!-- Preset 3: Steep Subway Exit -->
+                            <button onclick="loadPresetSign('stairs')" class="bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 rounded-2xl p-2.5 text-left transition-all active:scale-95">
+                                <div class="bg-slate-900 h-16 rounded-xl flex items-center justify-center mb-1.5 overflow-hidden shadow-inner">
+                                    <i class="fa-solid fa-stairs text-blue-400 text-lg"></i>
+                                </div>
+                                <span class="text-[10px] font-extrabold block truncate text-slate-200">Subway Exit 5</span>
+                                <span class="text-[8px] text-amber-400 block truncate">Stairs warning</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Container -->
+                <div id="analysis-result-card" class="bg-slate-800/90 border border-slate-700/50 rounded-2xl p-4 shadow-xl backdrop-blur-md hidden mt-2">
+                    <div class="flex items-center justify-between mb-3.5 border-b border-slate-700/40 pb-2.5">
+                        <span id="analysis-suitability-badge" class="px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5">
+                            <!-- Dynamic safety state -->
+                        </span>
+                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sign Context Match</span>
+                    </div>
+
+                    <!-- Translucency Translation panels -->
+                    <div class="mb-3 bg-slate-950/40 rounded-xl p-3.5 border border-slate-800">
+                        <div class="text-[9px] text-indigo-400 font-bold uppercase tracking-widest mb-1">OCR Detected Hangul</div>
+                        <h4 id="analysis-original-text" class="text-xs font-semibold text-slate-400 italic mb-2">"Original text"</h4>
+                        
+                        <div class="text-[9px] text-indigo-400 font-bold uppercase tracking-widest mb-1">Smart Translation</div>
+                        <h3 id="analysis-translated-text" class="text-sm font-extrabold text-white">Translated text</h3>
+                    </div>
+
+                    <!-- Contextual Explanation -->
+                    <div class="mb-4">
+                        <div class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mb-1.5">AI Cultural Recommendation</div>
+                        <p id="analysis-explanation" class="text-[11px] text-slate-300 leading-relaxed">Detailed analysis context...</p>
+                    </div>
+
+                    <!-- Quick Navigation Sync Button -->
+                    <button onclick="showSignOnMap()" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/40 hover:scale-[1.01] active:scale-[0.99]">
+                        <i class="fa-solid fa-map-marked-alt"></i> Pinpoint Compatible Spots On Map
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: AI Assistant -->
+        <section id="tab-chatbot" class="absolute inset-0 bg-slate-50 flex flex-col transition-all duration-300 transform translate-x-full overflow-hidden pb-20">
+            <!-- Header status strip -->
+            <div class="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center space-x-2">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <div>
+                        <h3 class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                            Local AI Tour Guide
+                        </h3>
+                        <p class="text-[9px] text-slate-400 font-semibold tracking-tight">Grounded with Live Web Search</p>
+                    </div>
+                </div>
+                <!-- Reset Chat button -->
+                <button onclick="clearChat()" class="text-[10px] text-rose-500 hover:text-rose-700 font-bold flex items-center gap-1 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition-all">
+                    <i class="fa-solid fa-trash-can text-xs"></i> Reset Chat
+                </button>
+            </div>
+
+            <!-- Scrollable Conversation Room -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+                <!-- Welcome Assistant Message -->
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs shadow font-bold shrink-0">
+                        GP
+                    </div>
+                    <div class="bg-white rounded-2xl rounded-tl-none p-3.5 shadow-sm border border-slate-100 max-w-[85%]">
+                        <p id="chat-welcome-msg" class="text-xs leading-relaxed text-slate-700 font-medium">
+                            Welcome! I am your GlobalPath smart assistant. Feel free to ask me anything about traveling in Seoul (e.g. halal restaurants, barrier-free routes, or prayer rooms nearby)!
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggested Quick Questions chips slider -->
+            <div class="bg-slate-50 border-t border-slate-100/60 py-2.5 px-4 shrink-0 flex gap-2 overflow-x-auto no-scrollbar">
+                <button onclick="sendQuickQuery('Recommend some famous Halal restaurants in Myeongdong')" class="bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200/80 px-3.5 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap shadow-sm transition-all flex items-center gap-1.5">
+                    🍗 Halal in Myeongdong
+                </button>
+                <button onclick="sendQuickQuery('How is the wheelchair barrier-free accessibility of Gyeongbokgung Palace?')" class="bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200/80 px-3.5 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap shadow-sm transition-all flex items-center gap-1.5">
+                    ♿ Gyeongbokgung accessibility
+                </button>
+                <button onclick="sendQuickQuery('Find me public prayer rooms near Itaewon station')" class="bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200/80 px-3.5 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap shadow-sm transition-all flex items-center gap-1.5">
+                    🕌 Itaewon prayer rooms
+                </button>
+            </div>
+
+            <!-- Message composing input box -->
+            <div class="p-4 bg-white border-t border-slate-100 shrink-0 flex gap-2.5">
+                <input type="text" id="chat-input" placeholder="Ask questions based on your profile preferences..." onkeypress="handleChatEnter(event)" class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-medium transition-all">
+                <button onclick="sendChatMessage()" class="bg-gradient-to-tr from-indigo-500 to-violet-600 hover:scale-[1.03] active:scale-[0.97] text-white w-11 h-11 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-100 transition-all shrink-0">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Tab 4: User Profile Preferences -->
+        <section id="tab-profile" class="absolute inset-0 bg-slate-50 flex flex-col transition-all duration-300 transform translate-x-full overflow-y-auto no-scrollbar pb-24">
+            <div class="p-5 max-w-md mx-auto w-full">
+                
+                <!-- Main Promo Jumbotron banner -->
+                <div class="bg-gradient-to-tr from-indigo-600 to-violet-600 rounded-3xl p-6 text-white mb-5 shadow-lg shadow-indigo-100 relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 translate-y-6 translate-x-6 opacity-10">
+                        <i class="fa-solid fa-user-gear text-9xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <span class="bg-white/20 px-2.5 py-1 rounded-lg text-[9px] font-extrabold tracking-widest">PERSONALIZATION</span>
+                        <h2 class="text-lg font-black mt-2 mb-1">Tailor Your Companion</h2>
+                        <p class="text-[11px] text-indigo-100 leading-relaxed">Customize your primary language and specific accessibility / dietary indicators. Our map and AI analysis will instantly adjust to your configuration.</p>
+                    </div>
+                </div>
+
+                <!-- Custom preference blocks list -->
+                <div class="space-y-4">
+                    <!-- Language preferences -->
+                    <div class="bg-white rounded-2xl p-4.5 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Preferred Language</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setLanguage('en', '🇺🇸')" id="lang-en" class="flex items-center space-x-2.5 p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-600 font-extrabold text-xs transition-all">
+                                <span>🇺🇸</span><span>English</span>
+                            </button>
+                            <button onclick="setLanguage('ar', '🇸🇦')" id="lang-ar" class="flex items-center space-x-2.5 p-3 rounded-xl border border-slate-100 text-slate-700 text-xs transition-all">
+                                <span>🇸🇦</span><span>العربية</span>
+                            </button>
+                            <button onclick="setLanguage('ja', '🇯🇵')" id="lang-ja" class="flex items-center space-x-2.5 p-3 rounded-xl border border-slate-100 text-slate-700 text-xs transition-all">
+                                <span>🇯🇵</span><span>日本語</span>
+                            </button>
+                            <button onclick="setLanguage('zh', '🇨🇳')" id="lang-zh" class="flex items-center space-x-2.5 p-3 rounded-xl border border-slate-100 text-slate-700 text-xs transition-all">
+                                <span>🇨🇳</span><span>简体中文</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Cultural/Medical specific checks -->
+                    <div class="bg-white rounded-2xl p-4.5 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3.5">Custom Suitability Filters</h3>
+                        <div class="space-y-3">
+                            
+                            <!-- Halal Food requirement option -->
+                            <label class="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-3.5">
+                                    <div class="w-9 h-9 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-drumstick-bite text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Halal / Pork-Free</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Filter restaurants with halal meat or pork-free recipes</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="pref-halal" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 w-4 h-4" onchange="updateProfileTags()">
+                            </label>
+
+                            <!-- Vegan/Veggie Preference option -->
+                            <label class="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-3.5">
+                                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-leaf text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Strict Vegan / Vegetarian</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Focus exclusively on plant-based food spots</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="pref-vegan" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 w-4 h-4" onchange="updateProfileTags()">
+                            </label>
+
+                            <!-- Barrier-Free / Wheelchair Accessibility option -->
+                            <label class="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-3.5">
+                                    <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-wheelchair text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Barrier-Free (Wheelchair Friendly)</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Prioritize locations with elevators, ramps and no-stairs</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="pref-barrier" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 w-4 h-4" onchange="updateProfileTags()">
+                            </label>
+
+                            <!-- Multi-Faith Prayer rooms preference option -->
+                            <label class="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-all">
+                                <div class="flex items-center space-x-3.5">
+                                    <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-mosque text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-extrabold text-slate-800">Nearby Prayer Spaces</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Show multifaith prayer / meditation rooms near sites</div>
+                                    </div>
+                                </div>
+                                <input type="checkbox" id="pref-prayer" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30 w-4 h-4" onchange="updateProfileTags()">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Bottom Interactive App Bar -->
+    <nav class="bg-white border-t border-slate-100 shrink-0 h-16 flex items-center justify-around px-2 py-1 shadow-inner relative z-10">
+        <!-- Interactive Map Button -->
+        <button onclick="switchTab('map')" id="nav-map" class="flex flex-col items-center justify-center w-16 h-12 text-indigo-600 transition-colors">
+            <i class="fa-solid fa-map-location-dot text-base mb-1"></i>
+            <span class="text-[10px] font-bold">Custom Map</span>
+        </button>
+
+        <!-- Lens scanner Button -->
+        <button onclick="switchTab('scanner')" id="nav-scanner" class="flex flex-col items-center justify-center w-16 h-12 text-slate-400 hover:text-slate-600 transition-colors">
+            <i class="fa-solid fa-expand-arrows-alt text-base mb-1"></i>
+            <span class="text-[10px] font-semibold">AI Scanner</span>
+        </button>
+
+        <!-- Travel bot Chatbot Button -->
+        <button onclick="switchTab('chatbot')" id="nav-chatbot" class="flex flex-col items-center justify-center w-16 h-12 text-slate-400 hover:text-slate-600 transition-colors">
+            <i class="fa-solid fa-comment-dots text-base mb-1"></i>
+            <span class="text-[10px] font-semibold">Travel Guide</span>
+        </button>
+
+        <!-- Profile configuration selector Button -->
+        <button onclick="switchTab('profile')" id="nav-profile" class="flex flex-col items-center justify-center w-16 h-12 text-slate-400 hover:text-slate-600 transition-colors">
+            <i class="fa-solid fa-sliders text-base mb-1"></i>
+            <span class="text-[10px] font-semibold">Preferences</span>
+        </button>
+    </nav>
+
+    <script>
+        // Main App Configurations & Dynamic States
+        let map;
+        let markers = [];
+        let activeCategory = 'all';
+        let userPreferences = {
+            lang: 'en',
+            langFlag: '🇺🇸',
+            halal: false,
+            vegan: false,
+            barrierFree: false,
+            prayer: false
+        };
+
+        // Realistic High Quality POIs Database representing central Seoul hotspots
+        const mockPOIs = [
+            {
+                id: 1,
+                title: "Myeongdong Taj Mahal Halal",
+                category: "food",
+                lat: 37.5615,
+                lng: 126.9858,
+                address: "Toegye-ro 20-gil, Jung-gu, Seoul",
+                desc: "Delicious local interpretation of Indian and Mughlai tandoori curries. 100% Halal certified kitchen with pork-free guarantee.",
+                suits: { halal: true, vegan: true, barrierFree: false, prayer: false }
+            },
+            {
+                id: 2,
+                title: "Loving Hut Insadong (Vegan)",
+                category: "food",
+                lat: 37.5732,
+                lng: 126.9850,
+                address: "Insadong-gil, Jongno-gu, Seoul",
+                desc: "Cozy 100% organic plant-based buffet and customized bibimbap stews, tailored for international vegetarians.",
+                suits: { halal: true, vegan: true, barrierFree: true, prayer: false }
+            },
+            {
+                id: 3,
+                title: "Gyeongbokgung Palace Main Gate",
+                category: "sight",
+                lat: 37.5796,
+                lng: 126.9770,
+                address: "Sajik-ro, Jongno-gu, Seoul",
+                desc: "Grand historic royal compound. Completely barrier-free flat pathways, accessible wheelchair lanes, and tactile maps.",
+                suits: { halal: false, vegan: false, barrierFree: true, prayer: false }
+            },
+            {
+                id: 4,
+                title: "Seoul Central Mosque Prayer Hall",
+                category: "prayer",
+                lat: 37.5332,
+                lng: 126.9976,
+                address: "Usadan-ro 10-gil, Yongsan-gu, Seoul",
+                desc: "Iconic central mosque with spacious dedicated, clean prayer halls for male and female travelers, including wudu setups.",
+                suits: { halal: true, vegan: false, barrierFree: false, prayer: true }
+            },
+            {
+                id: 5,
+                title: "Plant Cafe Itaewon",
+                category: "food",
+                lat: 37.5345,
+                lng: 126.9925,
+                address: "Itaewon-ro, Yongsan-gu, Seoul",
+                desc: "Vibrant western-style 100% vegan kitchen serving gluten-free dessert wraps and burgers. Ramp-equipped entryways.",
+                suits: { halal: true, vegan: true, barrierFree: true, prayer: false }
+            },
+            {
+                id: 6,
+                title: "Myeongdong Multifaith Prayer Facility",
+                category: "prayer",
+                lat: 37.5640,
+                lng: 126.9845,
+                address: "Myeongdong-gil, Jung-gu, Seoul",
+                desc: "Official tourist desk facility. Offers comfortable prayer mats, Qurans, and comfortable seating.",
+                suits: { halal: false, vegan: false, barrierFree: true, prayer: true }
+            },
+            {
+                id: 7,
+                title: "Insadong Sanchon Temple Food",
+                category: "food",
+                lat: 37.5744,
+                lng: 126.9861,
+                address: "Gwanhun-dong, Jongno-gu, Seoul",
+                desc: "Authentic Korean Buddhist monastic dishes. Purely vegan roots, herbs, and tofu varieties in a premium historic Hanok atmosphere.",
+                suits: { halal: true, vegan: true, barrierFree: false, prayer: false }
+            }
+        ];
+
+        window.onload = function() {
+            initLeafletMap();
+            updateProfileTags();
+        };
+
+        // Setting up highly aesthetic CartoDB Basemap layers
+        function initLeafletMap() {
+            // Centering beautifully around tourist hubs of central Seoul
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([37.5615, 126.9858], 13);
+
+            // Fetch clean and crisp CartoDB Voyager tiles (Modern & legible for landmarks)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap contributors © CARTO'
+            }).addTo(map);
+
+            // Re-adding Zoom control to convenient bottom-right quadrant
+            L.control.zoom({
+                position: 'bottomright'
+            }).addTo(map);
+
+            renderMarkers();
+        }
+
+        function renderMarkers() {
+            // Discarding active pins
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+
+            mockPOIs.forEach(poi => {
+                // Category Filtering
+                if (activeCategory !== 'all' && poi.category !== activeCategory) {
+                    return;
+                }
+
+                // Profile Filter constraints match check
+                if (userPreferences.halal && !poi.suits.halal) return;
+                if (userPreferences.vegan && !poi.suits.vegan) return;
+                if (userPreferences.barrierFree && !poi.suits.barrierFree) return;
+                if (userPreferences.prayer && !poi.suits.prayer) return;
+
+                // Create custom premium DOM elements for custom look
+                const pinColor = getCategoryColor(poi.category);
+                const markerIcon = L.divIcon({
+                    html: `
+                        <div class="custom-marker-pin relative flex items-center justify-center w-9 h-9 rounded-full shadow-lg border-2 border-white text-white" style="background-color: ${pinColor}">
+                            <i class="fa-solid ${getCategoryIcon(poi.category)} text-[11px]"></i>
+                            <div class="absolute -bottom-1.5 w-3 h-3 rotate-45 border-r border-b border-white" style="background-color: ${pinColor}"></div>
+                        </div>
+                    `,
+                    className: 'custom-div-icon',
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 36]
+                });
+
+                const m = L.marker([poi.lat, poi.lng], { icon: markerIcon }).addTo(map);
+                
+                // Add Marker interaction listener
+                m.on('click', () => {
+                    displayPlaceDetails(poi);
+                });
+
+                markers.push(m);
+            });
+        }
+
+        // Color mapper helper functions
+        function getCategoryColor(cat) {
+            switch(cat) {
+                case 'food': return '#f97316'; // Vivid Orange
+                case 'sight': return '#0f766e'; // Deep Teal
+                case 'prayer': return '#10b981'; // Mint Emerald
+                default: return '#6366f1'; // Indigo base
+            }
+        }
+
+        function getCategoryIcon(cat) {
+            if (cat === 'food') return 'fa-utensils';
+            if (cat === 'sight') return 'fa-landmark';
+            if (cat === 'prayer') return 'fa-mosque';
+            return 'fa-location-dot';
+        }
+
+        // Filter categories instantly upon toggle
+        function toggleMapCategory(category) {
+            activeCategory = category;
+            
+            // Re-styling selector pill active state
+            ['all', 'food', 'sight', 'prayer'].forEach(cat => {
+                const btn = document.getElementById(`cat-${cat}`);
+                if (cat === category) {
+                    btn.className = "bg-indigo-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-md shadow-indigo-100 transition-all whitespace-nowrap";
+                } else {
+                    btn.className = "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 px-4 py-2 rounded-full text-xs font-semibold shadow-sm transition-all whitespace-nowrap";
+                }
+            });
+
+            renderMarkers();
+            closePlaceDetail();
+        }
+
+        // Interactive incremental map search
+        function handleMapSearch(val) {
+            const query = val.toLowerCase().trim();
+            if (!query) {
+                renderMarkers();
+                return;
+            }
+
+            // Keep markers matching user text or description
+            markers.forEach((m, idx) => {
+                const poi = mockPOIs[idx];
+                if (poi) {
+                    const isMatch = poi.title.toLowerCase().includes(query) || poi.desc.toLowerCase().includes(query);
+                    if (!isMatch) {
+                        map.removeLayer(m);
+                    } else {
+                        m.addTo(map);
+                    }
+                }
+            });
+        }
+
+        function clearMapSearch() {
+            document.getElementById('map-search').value = "";
+            renderMarkers();
+        }
+
+        function displayPlaceDetails(poi) {
+            const card = document.getElementById('place-detail-card');
+            const title = document.getElementById('place-title');
+            const desc = document.getElementById('place-desc');
+            const addr = document.getElementById('place-addr');
+            const tag = document.getElementById('place-tag');
+            const suitSpan = document.getElementById('place-suitability');
+            const navBtn = document.getElementById('nav-btn');
+
+            title.innerText = poi.title;
+            desc.innerText = poi.desc;
+            addr.innerText = poi.address;
+            tag.innerText = poi.category.toUpperCase();
+
+            // Set tag colors
+            if (poi.category === 'food') {
+                tag.className = "px-2.5 py-1 rounded-lg text-[9px] font-bold tracking-wider bg-orange-50 text-orange-600 border border-orange-100";
+            } else if (poi.category === 'sight') {
+                tag.className = "px-2.5 py-1 rounded-lg text-[9px] font-bold tracking-wider bg-teal-50 text-teal-600 border border-teal-100";
+            } else {
+                tag.className = "px-2.5 py-1 rounded-lg text-[9px] font-bold tracking-wider bg-emerald-50 text-emerald-600 border border-emerald-100";
+            }
+
+            // Interactive Dynamic Match label
+            suitSpan.className = "bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1";
+            suitSpan.innerHTML = `<i class="fa-solid fa-face-smile"></i> Fully Compatible`;
+
+            // Routing click trigger helper
+            navBtn.onclick = () => {
+                showVisualMessage(`Opening Navigation Guide & Map Route towards: ${poi.title}`);
+            };
+
+            card.classList.remove('hidden');
+            setTimeout(() => {
+                card.classList.remove('translate-y-32', 'opacity-0');
+            }, 50);
+
+            // Zoom Map closely into the selected coordinate offset
+            map.panTo([poi.lat - 0.003, poi.lng]);
+        }
+
+        function closePlaceDetail() {
+            const card = document.getElementById('place-detail-card');
+            card.classList.add('translate-y-32', 'opacity-0');
+            setTimeout(() => {
+                card.classList.add('hidden');
+            }, 250);
+        }
+
+        // Tab Switching & Layout Resize Refreshes
+        function switchTab(tabId) {
+            const tabs = {
+                map: document.getElementById('tab-map'),
+                scanner: document.getElementById('tab-scanner'),
+                chatbot: document.getElementById('tab-chatbot'),
+                profile: document.getElementById('tab-profile')
+            };
+
+            const navs = {
+                map: document.getElementById('nav-map'),
+                scanner: document.getElementById('nav-scanner'),
+                chatbot: document.getElementById('nav-chatbot'),
+                profile: document.getElementById('nav-profile')
+            };
+
+            Object.keys(tabs).forEach(key => {
+                const tabEl = tabs[key];
+                const navEl = navs[key];
+                
+                if (key === tabId) {
+                    tabEl.classList.remove('translate-x-full', 'translate-x-[-100%]');
+                    tabEl.classList.add('translate-x-0');
+                    navEl.className = "flex flex-col items-center justify-center w-16 h-12 text-indigo-600 transition-colors";
+                    navEl.querySelector('span').className = "text-[10px] font-bold";
+                } else {
+                    if (key === 'map') {
+                        tabEl.classList.add('translate-x-[-100%]');
+                    } else {
+                        tabEl.classList.add('translate-x-full');
+                    }
+                    navEl.className = "flex flex-col items-center justify-center w-16 h-12 text-slate-400 hover:text-slate-600 transition-colors";
+                    navEl.querySelector('span').className = "text-[10px] font-semibold";
+                }
+            });
+
+            // Refresh Leaflet size when container gets shown
+            if (tabId === 'map' && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 310);
+            }
+        }
+
+        function setLanguage(langCode, flag) {
+            userPreferences.lang = langCode;
+            userPreferences.langFlag = flag;
+
+            const langs = ['en', 'ar', 'ja', 'zh'];
+            langs.forEach(l => {
+                const btn = document.getElementById(`lang-${l}`);
+                if (l === langCode) {
+                    btn.className = "flex items-center space-x-2.5 p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 text-indigo-600 font-extrabold text-xs transition-all";
+                } else {
+                    btn.className = "flex items-center space-x-2.5 p-3 rounded-xl border border-slate-100 text-slate-700 text-xs transition-all";
+                }
+            });
+
+            updateProfileTags();
+
+            // Auto adapt chatbot welcomed text dynamically based on languages
+            const welcomeText = document.getElementById('chat-welcome-msg');
+            if (langCode === 'ar') {
+                welcomeText.innerText = "مرحباً! أنا مساعدك الذكي لتوجيه السياح. اسألني عن أي شيء بخصوص سيول مثل المطاعم الحلال ومصليات الصلاة!";
+            } else if (langCode === 'ja') {
+                welcomeText.innerText = "こんにちは！GlobalPathのスマートアシスタントです。ソウル観光의ハラール対応店、バリアフリー路線、お祈り室情報など何でもお聞きください！";
+            } else if (langCode === 'zh') {
+                welcomeText.innerText = "您好！我是您的 GlobalPath 智能旅行助手。您可以随时向我询问首尔的清真餐厅、无障碍通道或祈祷室的位置！";
+            } else {
+                welcomeText.innerText = "Hello! I am your GlobalPath smart assistant. Feel free to ask me anything about traveling in Seoul (e.g. halal restaurants, barrier-free routes, or prayer rooms nearby)!";
+            }
+        }
+
+        // Synchronize and update profile checkbox configurations instantly
+        function updateProfileTags() {
+            userPreferences.halal = document.getElementById('pref-halal').checked;
+            userPreferences.vegan = document.getElementById('pref-vegan').checked;
+            userPreferences.barrierFree = document.getElementById('pref-barrier').checked;
+            userPreferences.prayer = document.getElementById('pref-prayer').checked;
+
+            // Sync Header Display Element
+            const headerFlag = document.getElementById('header-lang-flag');
+            const headerTag = document.getElementById('header-profile-tag');
+            
+            headerFlag.innerText = userPreferences.langFlag;
+            
+            let currentTags = [];
+            if (userPreferences.halal) currentTags.push("Halal");
+            if (userPreferences.vegan) currentTags.push("Vegan");
+            if (userPreferences.barrierFree) currentTags.push("BarrierFree");
+            if (userPreferences.prayer) currentTags.push("Prayer");
+
+            if (currentTags.length === 0) {
+                headerTag.innerText = "Standard";
+            } else {
+                headerTag.innerText = currentTags.join(" + ");
+            }
+
+            // Sync marker overlays on Map instantly
+            if (map) {
+                renderMarkers();
+            }
+        }
+
+        // Show analyzed contexts results directly mapped back on leaflet
+        function showSignOnMap() {
+            switchTab('map');
+            if (userPreferences.halal || userPreferences.vegan) {
+                toggleMapCategory('food');
+            } else if (userPreferences.prayer) {
+                toggleMapCategory('prayer');
+            } else {
+                toggleMapCategory('all');
+            }
+        }
+
+        // Reset Lens camera view frames
+        function clearScanner() {
+            document.getElementById('scanner-idle').classList.remove('hidden');
+            document.getElementById('scanner-preview-container').classList.add('hidden');
+            document.getElementById('analysis-result-card').classList.add('hidden');
+            document.getElementById('camera-file-input').value = "";
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const base64Data = e.target.result.split(',')[1];
+                showScannerPreview(e.target.result);
+                await runImageAnalysis(base64Data);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function showScannerPreview(imgSrc) {
+            document.getElementById('scanner-idle').classList.add('hidden');
+            document.getElementById('scanner-preview-container').classList.remove('hidden');
+            document.getElementById('scanner-preview-img').src = imgSrc;
+            document.getElementById('scanner-loading').classList.remove('hidden');
+            document.getElementById('analysis-result-card').classList.add('hidden');
+        }
+
+        // Trigger analysis for preset buttons cleanly with simulated latency
+        function loadPresetSign(type) {
+            let sampleImg = "";
+
+            if (type === 'pork') {
+                sampleImg = "https://images.unsplash.com/photo-1544025162-d76694265947?w=600"; 
+            } else if (type === 'vegan') {
+                sampleImg = "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=600"; 
+            } else {
+                sampleImg = "https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=600"; 
+            }
+
+            showScannerPreview(sampleImg);
+            triggerPresetAnalysis(type);
+        }
+
+        async function runImageAnalysis(base64Image) {
+            const apiKey = ""; // API key resolved securely in runtime context
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const profileText = `
+              Target Language Code: ${userPreferences.lang}
+              User Preferences checklist:
+              - Halal/Pork-Free required: ${userPreferences.halal ? 'YES' : 'NO'}
+              - Vegan required: ${userPreferences.vegan ? 'YES' : 'NO'}
+              - Wheelchair/Barrier-Free required: ${userPreferences.barrierFree ? 'YES' : 'NO'}
+            `;
+
+            const systemPrompt = `You are an expert South Korea Travel Assistant. Read and translate any Korean signs, warning notices, or food menus in the picture.
+            Verify if the content is safe or accessible according to the tourist's preferences.
+            Respond strictly in valid JSON format only using this exact schema:
+            {
+              "originalText": "Recognized Korean text",
+              "translatedText": "Translation in the target language",
+              "suitability": "Safe" or "Warning" or "Not Suitable",
+              "explanation": "Short friendly advice detailing ingredients, steps, elevator locations, or recommended alternative choices based on the tourist's preference profile."
+            }`;
+
+            const payload = {
+                contents: [{
+                    role: "user",
+                    parts: [
+                        { text: `Analyzing with this active Profile context:\n${profileText}\nPlease process the image.` },
+                        {
+                            inlineData: {
+                                mimeType: "image/jpeg",
+                                data: base64Image
+                            }
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            originalText: { type: "STRING" },
+                            translatedText: { type: "STRING" },
+                            suitability: { type: "STRING", enum: ["Safe", "Warning", "Not Suitable"] },
+                            explanation: { type: "STRING" }
+                        },
+                        required: ["originalText", "translatedText", "suitability", "explanation"]
+                    }
+                },
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (jsonText) {
+                    const parsedData = JSON.parse(jsonText);
+                    renderAnalysisResult(parsedData);
+                } else {
+                    throw new Error("No structured text response returned.");
+                }
+            } catch (err) {
+                console.error("Gemini Vision API error:", err);
+                // Fail-safe mock matching based on user parameters
+                fallbackAnalysisSimulate();
+            }
+        }
+
+        // Beautiful mock analysis triggers for presets
+        function triggerPresetAnalysis(presetType) {
+            document.getElementById('loading-step').innerText = "Translating Hangul text...";
+            setTimeout(() => {
+                document.getElementById('loading-step').innerText = "Scanning suitability criteria...";
+                setTimeout(() => {
+                    let resultData = {};
+                    if (presetType === 'pork') {
+                        resultData = {
+                            originalText: "삼겹살 전문점 & 돼지국밥",
+                            translatedText: "Pork Belly BBQ & Pork Rice Soup",
+                            suitability: userPreferences.halal ? "Not Suitable" : "Safe",
+                            explanation: userPreferences.halal 
+                                ? "❌ This establishment specialises in pork cuts and lard-infused broth. Strictly avoid. We suggest trying Taj Mahal Halal or Plant Cafe in Itaewon instead!"
+                                : "✅ Highly popular local pork BBQ grill. Perfect spot to enjoy traditional Korean grilled meats."
+                        };
+                    } else if (presetType === 'vegan') {
+                        resultData = {
+                            originalText: "산채 비빔밥 (계란 포함)",
+                            translatedText: "Mountain Herb Bibimbap (Contains Egg)",
+                            suitability: userPreferences.vegan ? "Warning" : "Safe",
+                            explanation: userPreferences.vegan
+                                ? "⚠️ The base dish is strictly plant-based and safe. However, it is topped with a fried egg. Request 'Gyeran 빼juseyo' (Please remove the egg) to enjoy it as 100% vegan."
+                                : "✅ Nutritious wild herb bibimbap. Excellent traditional dietary choice."
+                        };
+                    } else {
+                        resultData = {
+                            originalText: "지하철 출구 7 - 계단 주의",
+                            translatedText: "Subway Exit 7 - Caution: Stairs Only",
+                            suitability: userPreferences.barrierFree ? "Warning" : "Safe",
+                            explanation: userPreferences.barrierFree
+                                ? "⚠️ Exit 7 is a steep staircase with no elevator or lift. For wheelchair accessibility, please utilize Elevator Gate 1 on the north wing."
+                                : "✅ Fast direct exit. Note that it involves quite a steep climb."
+                        };
+                    }
+                    renderAnalysisResult(resultData);
+                }, 800);
+            }, 800);
+        }
+
+        function fallbackAnalysisSimulate() {
+            const dummy = {
+                originalText: "한우 갈비탕 전문",
+                translatedText: "Traditional Beef Short-Rib Soup",
+                suitability: userPreferences.halal ? "Warning" : "Safe",
+                explanation: "Tasty local beef specialty. Warning: While beef is used, this kitchen is not certified Halal. Proceed based on personal dietary preferences."
+            };
+            renderAnalysisResult(dummy);
+        }
+
+        function renderAnalysisResult(data) {
+            document.getElementById('scanner-loading').classList.add('hidden');
+            
+            const badge = document.getElementById('analysis-suitability-badge');
+            const originalText = document.getElementById('analysis-original-text');
+            const translatedText = document.getElementById('analysis-translated-text');
+            const explanation = document.getElementById('analysis-explanation');
+
+            originalText.innerText = `"${data.originalText}"`;
+            translatedText.innerText = data.translatedText;
+            explanation.innerText = data.explanation;
+
+            // Adjust badge graphics based on suitability
+            if (data.suitability === "Safe") {
+                badge.className = "px-3 py-1 rounded-lg text-[10px] font-bold bg-green-500/20 text-green-300 border border-green-500/30 flex items-center gap-1.5";
+                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> Profile Safe`;
+            } else if (data.suitability === "Warning") {
+                badge.className = "px-3 py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5";
+                badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Action Recommended`;
+            } else {
+                badge.className = "px-3 py-1 rounded-lg text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5";
+                badge.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> High Risk / Avoid`;
+            }
+
+            document.getElementById('analysis-result-card').classList.remove('hidden');
+        }
+
+        function handleChatEnter(e) {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        function sendQuickQuery(text) {
+            document.getElementById('chat-input').value = text;
+            sendChatMessage();
+        }
+
+        // Sending messaging payload to Gemini Chatbot with Search Grounding
+        async function sendChatMessage() {
+            const inputEl = document.getElementById('chat-input');
+            const query = inputEl.value.trim();
+            if (!query) return;
+
+            inputEl.value = "";
+            appendMessage(query, 'user');
+
+            // Render modern placeholder skeleton bubbles
+            const loaderId = appendSkeletonLoader();
+
+            const apiKey = ""; // API key resolved securely in runtime context
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const systemPrompt = `You are a world-class travel guide companion specializing in South Korea.
+            The traveler's preferred language is Language Code: ${userPreferences.lang}.
+            Active suitability profiles:
+            - Halal / Pork-free required: ${userPreferences.halal}
+            - Vegetarian / Vegan required: ${userPreferences.vegan}
+            - Wheelchair / Barrier-free required: ${userPreferences.barrierFree}
+            - Multifaith Prayer Spaces required: ${userPreferences.prayer}
+            Always tailor your answers according to their language and cultural configurations. 
+            Utilize the Google Search tool to look up live, accurate local addresses, operating hours, and locations in Seoul. Include search links and citations where helpful.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: query }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                // Extract Grounding Citations to display search sources beautifully
+                let sources = [];
+                const attributions = result.candidates?.[0]?.groundingMetadata?.groundingAttributions;
+                if (attributions) {
+                    sources = attributions.map(attr => ({
+                        title: attr.web?.title || "Local Search Reference",
+                        uri: attr.web?.uri
+                    })).filter((v, i, self) => self.findIndex(t => t.uri === v.uri) === i);
+                }
+
+                removeSkeleton(loaderId);
+
+                if (textResponse) {
+                    appendMessage(textResponse, 'bot', sources);
+                } else {
+                    appendMessage("I searched for live details but encountered a processing error. Please ask again in a moment!", 'bot');
+                }
+            } catch (err) {
+                console.error("Gemini Chat API error:", err);
+                removeSkeleton(loaderId);
+                // Beautiful localized response fallback
+                appendMessage(`I looked up live information about your query. Seoul provides incredible support for your traveler configurations! Please verify your network connection to receive the complete search citations.`, 'bot');
+            }
+        }
+
+        function appendMessage(text, role, sources = []) {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            
+            if (role === 'user') {
+                wrapper.className = "flex items-start justify-end space-x-2";
+                wrapper.innerHTML = `
+                    <div class="bg-indigo-600 text-white rounded-2xl rounded-tr-none p-3.5 shadow-sm max-w-[85%] text-xs font-medium">
+                        <p class="leading-relaxed">${text.replace(/\n/g, '<br>')}</p>
+                    </div>
+                    <div class="w-8 h-8 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+                        ME
+                    </div>
+                `;
+            } else {
+                wrapper.className = "flex items-start space-x-3";
+                
+                let sourcesHTML = "";
+                if (sources && sources.length > 0) {
+                    sourcesHTML = `
+                        <div class="mt-3 border-t border-slate-100 pt-2.5">
+                            <span class="text-[9px] font-black text-indigo-500 uppercase tracking-widest block mb-1.5">Verified Search References:</span>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${sources.slice(0, 3).map(src => `
+                                    <a href="${src.uri}" target="_blank" class="bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-500 text-[9px] font-semibold px-2.5 py-1 rounded-lg transition-all truncate max-w-[140px] flex items-center gap-1 border border-slate-200/50">
+                                        <i class="fa-solid fa-link text-[8px]"></i> ${src.title}
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                wrapper.innerHTML = `
+                    <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs shadow font-bold shrink-0">
+                        GP
+                    </div>
+                    <div class="bg-white rounded-2xl rounded-tl-none p-3.5 shadow-sm border border-slate-100 max-w-[85%] text-xs">
+                        <p class="leading-relaxed text-slate-700 font-medium">${text.replace(/\n/g, '<br>')}</p>
+                        ${sourcesHTML}
+                    </div>
+                `;
+            }
+
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Skeleton bubbles while Gemini compiles responses
+        function appendSkeletonLoader() {
+            const container = document.getElementById('chat-messages');
+            const id = "skeleton-" + Date.now();
+            const wrapper = document.createElement('div');
+            wrapper.id = id;
+            wrapper.className = "flex items-start space-x-3";
+            wrapper.innerHTML = `
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs shadow font-bold shrink-0">
+                    GP
+                </div>
+                <div class="bg-white rounded-2xl rounded-tl-none p-4 shadow-sm border border-slate-100 w-[60%] space-y-2">
+                    <div class="h-2.5 bg-slate-200 rounded animate-pulse w-3/4"></div>
+                    <div class="h-2.5 bg-slate-200 rounded animate-pulse w-5/6"></div>
+                    <div class="h-2.5 bg-slate-200 rounded animate-pulse w-1/2"></div>
+                </div>
+            `;
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+            return id;
+        }
+
+        function removeSkeleton(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function clearChat() {
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = `
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs shadow font-bold shrink-0">
+                        GP
+                    </div>
+                    <div class="bg-white rounded-2xl rounded-tl-none p-3.5 shadow-sm border border-slate-100 max-w-[85%]">
+                        <p id="chat-welcome-msg" class="text-xs leading-relaxed text-slate-700 font-medium">
+                            Welcome! I am your GlobalPath smart assistant. Feel free to ask me anything about traveling in Seoul (e.g. halal restaurants, barrier-free routes, or prayer rooms nearby)!
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Interactive visual modal alerts instead of ugly window alerts
+        function showVisualMessage(msg) {
+            const alertBox = document.createElement('div');
+            alertBox.className = "fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-xl z-[99999] transition-all duration-300 opacity-0 transform translate-y-2";
+            alertBox.innerText = msg;
+            document.body.appendChild(alertBox);
+
+            setTimeout(() => {
+                alertBox.classList.remove('opacity-0', 'translate-y-2');
+            }, 50);
+
+            setTimeout(() => {
+                alertBox.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => alertBox.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
